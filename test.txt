@@ -1,0 +1,38 @@
+/*fatorial (int fat) : int
+    if (lexp):
+        print (fat);
+        return calc;
+    else:
+        return 1;
+    end
+end
+
+mostrarMedia (int v1, int v2) : void
+    var: 
+        x : float;
+        y : int;
+    x = calc; 
+    print ("Resultado: ", x);
+end
+*/
+media (float n1, float n2) : float
+    var:
+         m : int;
+    m = calc;
+    return m;
+end
+
+main:
+    var:
+        const cout = 10.0;
+        numero : int;
+        n1, n2 : int;
+        
+    n = 2 + 3 + 5;
+    print ("Programa Fatorial. Digite o valor?");
+    scanf(numero);
+    print(fatorial(numero));
+    print ("Programa Media. Digite o valores?");
+    scanf(n1, n2);
+    print(mostrarMedia(n1, n2));
+end
