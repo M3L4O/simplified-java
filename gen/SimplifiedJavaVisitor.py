@@ -34,9 +34,10 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
     # Visit a parse tree produced by SimplifiedJavaParser#main.
     def visitMain(self, ctx: SimplifiedJavaParser.MainContext):
         self.symbol_table["main"] = {
-            "type": "void",
+            "type" : "void",
+            "args" : {},
             "const": {},
-            "vars": {},
+            "vars" : {},
         }
 
         return self.visitChildren(ctx)
@@ -98,6 +99,7 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         else:
             self.symbol_table[function_id] = {
                 "type": function_type,
+                "args": {},
                 "const": {},
                 "vars": {},
             }
@@ -110,12 +112,13 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
                 id
                 in self.symbol_table[function_id]["const"].keys()
                 | self.symbol_table[function_id]["vars"].keys()
+                | self.symbol_table[function_id]["args"].keys()
                 | self.symbol_table.keys()
             ):
                 print(f"Variable {id} already declared in this scope.")
                 continue
             else:
-                self.symbol_table[function_id]["vars"][id] = {
+                self.symbol_table[function_id]["args"][id] = {
                     "type": type,
                     "value": self.default_value[type],
                 }
@@ -141,9 +144,10 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
     # Visit a parse tree produced by SimplifiedJavaParser#constDeclaration.
     def visitConstDeclaration(self, ctx: SimplifiedJavaParser.ConstDeclarationContext):
         ids: list[str] = [id.getText() for id in ctx.ID()]
-        values: list[SimplifiedJavaParser.ValuedExprContext] = [
-            value for value in ctx.literal()
+        types: list = [
+            self.visitLiteral(literal)[0] for literal in ctx.literal()
         ]
+        values: list = [self.visitLiteral(literal)[1] for literal in ctx.literal()]
         scope = ctx.parentCtx.parentCtx
 
         if type(scope) == parser.MainContext:
@@ -151,31 +155,16 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         elif type(scope) == parser.FunctionContext:
             scope = scope.ID()[0].getText()
 
-        for id, value in zip(ids, values):
+        for id, _type, value in zip(ids, types, values):
             if (
                 id
                 in self.symbol_table[scope]["const"].keys()
                 | self.symbol_table[scope]["vars"].keys()
+                | self.symbol_table[scope]["args"].keys()
                 | self.symbol_table.keys()
             ):
                 print(f"Variable {id} already declared in this scope.")
                 continue
-
-            _type: str
-            if value.String():
-                _type = str
-                value = value.getText()[1:-1]
-            elif value.Boolean():
-                _type = bool
-                value = value.getText() == "true"
-            elif value.Float():
-                _type = float
-                value = float(value.getText())
-            elif value.Int():
-                _type = int
-                value = int(value.getText())
-            else:
-                raise Exception("Invalid type")
 
             self.symbol_table[scope]["const"][id] = {
                 "type": _type,
@@ -204,6 +193,7 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
                 id
                 in self.symbol_table[scope]["const"].keys()
                 | self.symbol_table[scope]["vars"].keys()
+                | self.symbol_table[scope]["args"].keys()
                 | self.symbol_table.keys()
             ):
                 print(f"Variable {id} already declared in this scope.")
@@ -221,11 +211,30 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by SimplifiedJavaParser#arith.
     def visitArith(self, ctx: SimplifiedJavaParser.ArithContext):
-        return self.visitChildren(ctx)
+        if ctx.functionCall():
+            return self.visitFunctionCall(ctx.functionCall())
+        elif ctx.literal():
+            return self.visitLiteral(ctx.literal())
+        elif ctx.ID():
+            return ctx.ID().getText()
 
     # Visit a parse tree produced by SimplifiedJavaParser#literal.
     def visitLiteral(self, ctx: SimplifiedJavaParser.LiteralContext):
-        return self.visitChildren(ctx)
-
+        if ctx.String():
+            _type = str
+            value = ctx.getText()[1:-1]
+        elif ctx.Boolean():
+            _type = bool
+            value = ctx.getText() == "true"
+        elif ctx.Float():
+            _type = float
+            value = float(ctx.getText())
+        elif ctx.Int():
+            _type = int
+            value = int(ctx.getText())
+        else:
+            raise Exception("Invalid type")
+        
+        return _type, value
 
 del SimplifiedJavaParser
