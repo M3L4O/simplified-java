@@ -27,7 +27,7 @@ expr:
 	| '(' expr ')'															# Parens;
 
 function:
-	ID '(' (Type ID (',' Type ID)*)? ')' ':' (Type | 'void') declScope? cmd* 'end';
+	ID '(' (Type ID (',' Type ID)*)? ')' ':' functionType=(Type | 'void') declScope? cmd* 'end';
 
 functionCall: ID '(' (expr (',' expr)*)? ')';
 

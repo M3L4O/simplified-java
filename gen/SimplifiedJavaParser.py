@@ -1120,6 +1120,7 @@ class SimplifiedJavaParser ( Parser ):
         def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
             super().__init__(parent, invokingState)
             self.parser = parser
+            self.functionType = None # Token
 
         def ID(self, i:int=None):
             if i is None:
@@ -1204,9 +1205,10 @@ class SimplifiedJavaParser ( Parser ):
             self.state = 173
             self.match(SimplifiedJavaParser.T__1)
             self.state = 174
+            localctx.functionType = self._input.LT(1)
             _la = self._input.LA(1)
             if not(_la==24 or _la==34):
-                self._errHandler.recoverInline(self)
+                localctx.functionType = self._errHandler.recoverInline(self)
             else:
                 self._errHandler.reportMatch(self)
                 self.consume()
