@@ -2,12 +2,14 @@
 from antlr4 import *
 
 from gen.SimplifiedJavaParser import SimplifiedJavaParser
+from gen.SimplifiedJavaParser import SimplifiedJavaParser as parser
 
 # This class defines a complete generic visitor for a parse tree produced by SimplifiedJavaParser.
 
 
 class SimplifiedJavaVisitor(ParseTreeVisitor):
     symbol_table: dict = {}
+    function_table: dict = {}
     default_value: dict = {
         "int": 0,
         "float": 0.0,
@@ -69,6 +71,19 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by SimplifiedJavaParser#function.
     def visitFunction(self, ctx: SimplifiedJavaParser.FunctionContext):
+        _type = ctx.Type()
+        if _type is None:
+            _type = "void"
+        else:
+            _type = _type[-1].getText()
+
+        id = ctx.ID()[0].getText()
+        if id in self.symbol_table:
+            print(f"Function {id} already declared in this scope.")
+        else:
+            self.symbol_table[id] = {
+                "type": ("function", _type),
+            }
         return self.visitChildren(ctx)
 
     # Visit a parse tree produced by SimplifiedJavaParser#functionCall.
@@ -93,7 +108,19 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         values: list[SimplifiedJavaParser.ValuedExprContext] = [
             value for value in ctx.literal()
         ]
+        scope = ctx.parentCtx.parentCtx
+
+        if type(scope) == parser.MainContext:
+            scope = "main"
+        elif type(scope) == parser.FunctionContext:
+            scope = scope.ID()[0].getText()
+        else:
+            print("Invalid scope")
+            return self.visitChildren(ctx)
         for id, value in zip(ids, values):
+            if id in self.symbol_table:
+                print(f"Const {id} already declared in this scope.")
+                continue
             _type: str
             if value.String():
                 _type = "str"
@@ -109,6 +136,7 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
             self.symbol_table[id] = {
                 "type": ("const", _type),
                 "value": value.getText(),
+                "scope": scope,
             }
         return self.visitChildren(ctx)
 
@@ -116,21 +144,32 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
     def visitVariableDeclaration(
         self, ctx: SimplifiedJavaParser.VariableDeclarationContext
     ):
+        scope = ctx.parentCtx.parentCtx
+
+        if type(scope) == parser.MainContext:
+            scope = "main"
+        elif type(scope) == parser.FunctionContext:
+            scope = scope.ID()[0].getText()
+        else:
+            print("Invalid scope")
+            return self.visitChildren(ctx)
+
         ids: list[str] = [id for id in ctx.ID()]
         _type = ctx.Type()
 
         if _type is None:
-            raise Exception("Invalid type")
-        
+            print("Invalid type")
+
         _type = _type.getText()
 
         for id in ids:
-            if id.getText() in self.symbol_table:
-                raise Exception(f"Variable {id.getText()} already declared in this scope.")
-            
+            if id in self.symbol_table:
+                print(f"Variable {id.getText()} already declared in this scope.")
+                continue
             self.symbol_table[id.getText()] = {
                 "type": ("var", _type),
                 "value": self.default_value[_type],
+                "scope": scope,
             }
 
         return self.visitChildren(ctx)

@@ -24,7 +24,7 @@ end
 
 main:
     var:
-        const cout = 10.0;
+        const cout = 10.0, cin = 20;
         numero : int;
         n1, n2 : int;
         
