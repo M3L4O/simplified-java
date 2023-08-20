@@ -12,7 +12,7 @@ def main():
     visitor = SimplifiedJavaVisitor()
     visitor.visit(tree)
     # print(tree.toStringTree(recog=parser))
-    print(visitor.symbol_table)
+    # print(visitor.symbol_table)
 
 
 if __name__ == "__main__":

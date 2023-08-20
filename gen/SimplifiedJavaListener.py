@@ -10,7 +10,7 @@ class SimplifiedJavaListener(ParseTreeListener):
 
     # Enter a parse tree produced by SimplifiedJavaParser#prog.
     def enterProg(self, ctx:SimplifiedJavaParser.ProgContext):
-        pass
+        print("Prog entered")
 
     # Exit a parse tree produced by SimplifiedJavaParser#prog.
     def exitProg(self, ctx:SimplifiedJavaParser.ProgContext):
@@ -19,7 +19,7 @@ class SimplifiedJavaListener(ParseTreeListener):
 
     # Enter a parse tree produced by SimplifiedJavaParser#main.
     def enterMain(self, ctx:SimplifiedJavaParser.MainContext):
-        pass
+        print("Main entered")
 
     # Exit a parse tree produced by SimplifiedJavaParser#main.
     def exitMain(self, ctx:SimplifiedJavaParser.MainContext):
@@ -213,7 +213,3 @@ class SimplifiedJavaListener(ParseTreeListener):
     # Exit a parse tree produced by SimplifiedJavaParser#literal.
     def exitLiteral(self, ctx:SimplifiedJavaParser.LiteralContext):
         pass
-
-
-
-del SimplifiedJavaParser

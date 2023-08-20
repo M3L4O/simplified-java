@@ -7,29 +7,31 @@ fatorial (int fat) : int
     end
 end
 
-mostrarMedia (bool v1, int v2) : void
-    var: 
-        x : float;
+mostrarMedia (int v1, int v2) : void
+    var:
+        const a = 10;
+        x : int;
         y : int;
-    x = calc; 
-    print ("Resultado: ", x);
+    x = 5 + 5 * 3;
+    print ("Resultado: ", media(v1, v2));
 end
 
-media (float n1, float n2) : float
+media (int n1, int n2) : float
     var:
-         m : int;
-    m = calc;
+         m : float;
+    m = (n1 + n2) / 2;
     return m;
-end
+end 
 
 main:
     var:
         const cout = 10.0;
         numero : int;
         n1, n2 : int;
-        media: int;
-        
-    n = 2 + 3 + 5;
+        isBoolean: bool;
+    
+    isBoolean = true;
+    isBoolean = false;
     print ("Programa Fatorial. Digite o valor?");
     scanf(numero);
     print(fatorial(numero));
