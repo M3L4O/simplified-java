@@ -20,6 +20,7 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
             SimplifiedJavaParser.EvalTargetContext: self.visitEvalTarget,
         }
 
+    has_error: bool = False
     symbol_table: dict = {}
     default_value: dict = {
         int: 0,
@@ -35,14 +36,49 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         "void": None,
     }
 
-    def solveExpression(self, line: int, column: int, left: Node, op: str, right: Node):
+    def get_scope(self, ctx):
+        parent = ctx.parentCtx
+        while (
+            parent.__class__ is not SimplifiedJavaParser.MainContext
+            and parent.__class__ is not SimplifiedJavaParser.FunctionContext
+        ):
+            parent = parent.parentCtx
+
+        scope = (
+            "main"
+            if parent.__class__ is SimplifiedJavaParser.MainContext
+            else parent.ID()[0].getText()
+        )
+        return scope
+
+    def error(self, message: str):
+        print(message)
+        self.has_error = True
+
+    def solveExpression(
+        self, line: int, column: int, left: Node, op: str, right: Node = None
+    ):
         value = None
-        if left.value and right.value:
+        if left.value is not None and not right:
+            if op == "-":
+                return Node(
+                    line=line, column=column, code="", type=left.type, value=-left.value
+                )
+            elif op == "!":
+                return Node(
+                    line=line,
+                    column=column,
+                    code="",
+                    type=left.type,
+                    value=not left.value,
+                )
+
+        if left.value is not None and right.value is not None:
             try:
                 value = eval(f"{left.value} {op} {right.value}")
             except NameError:
                 pass
-        return Node(line=line, column=column, code="", type=left.type, value=value)
+            return Node(line=line, column=column, code="", type=type(value), value=value)
 
     # Visit a parse tree produced by SimplifiedJavaParser#prog.
     def visitProg(self, ctx: SimplifiedJavaParser.ProgContext):
@@ -73,12 +109,19 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by SimplifiedJavaParser#conditional.
     def visitConditional(self, ctx: SimplifiedJavaParser.ConditionalContext):
-        return self.visitChildren(ctx)
+        expr = self.op_mapper[ctx.expr().__class__](ctx.expr())
+        if expr.type != bool:
+            self.error(
+                f"Type mismatch: {expr.type} and bool in line {ctx.start.line}: {ctx.getText()}"
+            )
 
     # Visit a parse tree produced by SimplifiedJavaParser#while.
     def visitWhile(self, ctx: SimplifiedJavaParser.WhileContext):
-        return self.visitChildren(ctx)
-
+        expr = self.op_mapper[ctx.expr().__class__](ctx.expr())
+        if expr.type != bool:
+            self.error(
+                f"Type mismatch: {expr.type} and bool in line {ctx.start.line}: {ctx.getText()}"
+            )
     # Visit a parse tree produced by SimplifiedJavaParser#EvalTarget.
     def visitEvalTarget(self, ctx: SimplifiedJavaParser.EvalTargetContext):
         return self.visitArith(ctx.arith())
@@ -87,40 +130,34 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
     def visitNot(self, ctx: SimplifiedJavaParser.NotContext):
         operand = self.op_mapper[ctx.operand.__class__](ctx.operand)
 
-        if ctx.op.text == "!" and operand.type == bool:
-            return Node(
-                line=ctx.start.line,
-                column=ctx.start.column,
-                code="",
-                type=bool,
-            )
-        elif ctx.op.text == "-" and operand.type in (int, float):
-            return Node(
-                line=ctx.start.line,
-                column=ctx.start.column,
-                code="",
-                type=operand.type,
+        if (
+            ctx.op.text == "!"
+            and operand.type == bool
+            or ctx.op.text == "-"
+            and operand.type in (int, float)
+        ):
+            return self.solveExpression(
+                ctx.start.line, ctx.start.column, operand, ctx.op.text
             )
         else:
-            print(f"Type mismatch: {ctx.op.text} and {operand.type}, {ctx.getText()}")
+            self.error(
+                f"Type mismatch: {ctx.op.text} and {operand.type} in line {ctx.start.line}: {ctx.getText()}"
+            )
 
     # Visit a parse tree produced by SimplifiedJavaParser#Mult.
     def visitMult(self, ctx: SimplifiedJavaParser.MultContext):
-        if ctx.left.__class__ is SimplifiedJavaParser.EvalTargetContext:
-            left = self.visitEvalTarget(ctx.left)
-        else:
-            left = self.op_mapper[ctx.left.__class__](ctx.left)
-        if ctx.right.__class__ is SimplifiedJavaParser.EvalTargetContext:
-            right = self.visitEvalTarget(ctx.right)
-        else:
-            right = self.op_mapper[ctx.right.__class__](ctx.right)
+        left = self.op_mapper[ctx.left.__class__](ctx.left)
+
+        right = self.op_mapper[ctx.right.__class__](ctx.right)
 
         if (
             left.type not in (int, float)
             or right.type not in (int, float)
             or left.type != right.type
         ):
-            print(f"Type mismatch: {left.type} and {right.type}, {ctx.getText()}")
+            self.error(
+                f"Type mismatch: {left.type} and {right.type} in line {ctx.start.line}: {ctx.getText()}"
+            )
 
         return self.solveExpression(
             ctx.start.line, ctx.start.column, left, ctx.op.text, right
@@ -139,58 +176,53 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by SimplifiedJavaParser#Sum.
     def visitSum(self, ctx: SimplifiedJavaParser.SumContext):
-        if ctx.left.__class__ is SimplifiedJavaParser.EvalTargetContext:
-            left = self.visitEvalTarget(ctx.left)
-        else:
-            left = self.op_mapper[ctx.left.__class__](ctx.left)
-        if ctx.right.__class__ is SimplifiedJavaParser.EvalTargetContext:
-            right = self.visitEvalTarget(ctx.right)
-        else:
-            right = self.op_mapper[ctx.right.__class__](ctx.right)
+        left = self.op_mapper[ctx.left.__class__](ctx.left)
+
+        right = self.op_mapper[ctx.right.__class__](ctx.right)
 
         if (
             left.type not in (int, float)
             or right.type not in (int, float)
             or left.type != right.type
         ):
-            print(f"Type mismatch: {left.type} and {right.type}, {ctx.getText()}")
+            self.error(
+                f"Type mismatch: {left.type} and {right.type} in line {ctx.start.line}: {ctx.getText()}"
+            )
 
         return self.solveExpression(
             ctx.start.line, ctx.start.column, left, ctx.op.text, right
         )
 
-    # Visit a parse tree produced by SimplifiedJavaParser#Logic.
     def visitLogic(self, ctx: SimplifiedJavaParser.LogicContext):
-        if ctx.left.__class__ is SimplifiedJavaParser.EvalTargetContext:
-            left = self.visitEvalTarget(ctx.left)
+        if ctx.left.__class__ is SimplifiedJavaParser.LogicContext:
+            self.error(f"Nested logic expressions are not supported in line {ctx.start.line}: {ctx.getText()}")
+            return Node(
+                line=ctx.start.line,
+                column=ctx.start.column,
+                code="",
+                type=bool,
+            )
         else:
             left = self.op_mapper[ctx.left.__class__](ctx.left)
         if ctx.right.__class__ is SimplifiedJavaParser.EvalTargetContext:
             right = self.visitEvalTarget(ctx.right)
 
-        if left.type not in (int, float, bool) or right.type not in (int, float, bool):
-            print(f"Type mismatch: {left.type} and {right.type}, {ctx.getText()}")
-        elif left.type != right.type:
-            print(
-                f"Type mismatch: {left.type} is not equal to {right.type}, {ctx.getText()}"
+        if left.type != right.type:
+            self.error(
+                f"Type mismatch: {left.type} is not equal to {right.type} in line {ctx.start.line}: {ctx.getText()}"
             )
 
-        return Node(
-            line=ctx.start.line,
-            column=ctx.start.column,
-            code="",
-            type=bool,
-        )
+        return self.solveExpression(ctx.start.line, ctx.start.column, left, ctx.op.text, right)
 
-    # Visit a parse tree produced by SimplifiedJavaParser#function.
     def visitFunction(self, ctx: SimplifiedJavaParser.FunctionContext):
         function_type = self.type_mapper[ctx.functionType.text]
 
         function_id = ctx.ID()[0].getText()
 
         if function_id in self.symbol_table:
-            print(f"Function {id} already declared in this scope.")
-            ctx.visitChildren(self)
+            self.error(
+                f"Function {id} already declared in this scope  in line {ctx.start.line}: {ctx.getText()}"
+            )
 
         else:
             self.symbol_table[function_id] = {
@@ -211,7 +243,9 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
                 | self.symbol_table[function_id]["args"].keys()
                 | self.symbol_table.keys()
             ):
-                print(f"Variable {id} already declared in this scope.")
+                self.error(
+                    f"Variable {id} already declared in this scope  in line {ctx.start.line}: {ctx.getText()}"
+                )
                 continue
             else:
                 self.symbol_table[function_id]["args"][id] = {
@@ -221,17 +255,63 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
 
         return self.visitChildren(ctx)
 
-    # Visit a parse tree produced by SimplifiedJavaParser#functionCall.
     def visitFunctionCall(self, ctx: SimplifiedJavaParser.FunctionCallContext):
-        return self.visitChildren(ctx)
+        if ctx.ID().getText() not in self.symbol_table:
+            self.error(
+                f"Function {ctx.ID().getText()} not declared in this scope  in line {ctx.start.line}: {ctx.getText()}"
+            )
+
+        args = self.symbol_table[ctx.ID().getText()]["args"].keys()
+        if len(args) != len(ctx.expr()):
+            self.error(
+                f"Expected {len(ctx.expr())} arguments, got {len(args)} in line {ctx.start.line}: {ctx.getText()}"
+            )
+
+        for arg, expr in zip(args, ctx.expr()):
+            expr = self.op_mapper[expr.__class__](expr)
+            if expr.type != self.symbol_table[ctx.ID().getText()]["args"][arg]["type"]:
+                self.error(
+                    f"Type mismatch: {expr.type} and {self.symbol_table[ctx.ID().getText()]['args'][arg]['type']} in line {ctx.start.line}: {ctx.getText()}"
+                )
+
+        return Node(
+            line=ctx.start.line,
+            column=ctx.start.column,
+            code="",
+            type=self.symbol_table[ctx.ID().getText()]["type"],
+        )
 
     # Visit a parse tree produced by SimplifiedJavaParser#return.
     def visitReturn(self, ctx: SimplifiedJavaParser.ReturnContext):
-        return self.visitChildren(ctx)
+        scope = self.get_scope(ctx)
+        type_function = self.symbol_table[scope]["type"]
+        if ctx.expr():
+            expr = self.op_mapper[ctx.expr().__class__](ctx.expr())
+            if expr:
+                if expr.type != type_function:
+                    self.error(
+                        f"Type mismatch: {expr.type} and {type_function} in line {ctx.start.line}: {ctx.getText()}"
+                    )
+
+        else:
+            if type_function != None:
+                self.error(
+                    f"Type mismatch: None and {type_function} in line {ctx.start.line}: {ctx.getText()}"
+                )
 
     # Visit a parse tree produced by SimplifiedJavaParser#break.
     def visitBreak(self, ctx: SimplifiedJavaParser.BreakContext):
-        return self.visitChildren(ctx)
+        parent = ctx.parentCtx
+        while (
+            parent.__class__ is not SimplifiedJavaParser.WhileContext
+            and parent.__class__ is not SimplifiedJavaParser.ProgContext
+        ):
+            parent = parent.parentCtx
+
+        if parent.__class__ is SimplifiedJavaParser.ProgContext:
+            self.error(
+                f"Break statement outside of loop in line {ctx.start.line}: {ctx.getText()}"
+            )
 
     # Visit a parse tree produced by SimplifiedJavaParser#declScope.
     def visitDeclScope(self, ctx: SimplifiedJavaParser.DeclScopeContext):
@@ -258,7 +338,9 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
                 | self.symbol_table[scope]["args"].keys()
                 | self.symbol_table.keys()
             ):
-                print(f"Variable {id} already declared in this scope in line {ctx.start.line}")
+                self.error(
+                    f"Variable {id} already declared in this scope  in line {ctx.start.line}: {ctx.getText()}"
+                )
                 continue
 
             self.symbol_table[scope]["const"][id] = {
@@ -296,56 +378,40 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
                 | self.symbol_table[scope]["args"].keys()
                 | self.symbol_table.keys()
             ):
-                print(f"Variable {id} already declared in this scope in line {ctx.start.line}")
+                self.error(
+                    f"Variable {id} already declared in this scope  in line {ctx.start.line}: {ctx.getText()}"
+                )
                 continue
             self.symbol_table[scope]["vars"][id] = {
                 "type": _type,
                 "value": self.default_value[_type],
             }
 
-        return self.visitChildren(ctx)
-
     # Visit a parse tree produced by SimplifiedJavaParser#assign.
     def visitAssign(self, ctx: SimplifiedJavaParser.AssignContext):
-        parent = ctx.parentCtx.parentCtx
-        scope = (
-            "main"
-            if parent.__class__ == SimplifiedJavaParser.MainContext
-            else parent.ID()[0].getText()
-        )
+        scope = self.get_scope(ctx)
         expr = self.op_mapper[ctx.expr().__class__](ctx.expr())
         if self.symbol_table[scope]["const"].get(ctx.ID().getText()):
-            print(
-                f"Cannot assign to const {ctx.ID().getText()} in line {ctx.start.line}"
+            self.error(
+                f"Cannot assign to const {ctx.ID().getText()} in line {ctx.start.line}: {ctx.getText()}"
             )
         elif not self.symbol_table[scope]["vars"].get(ctx.ID().getText()):
-            print(f"Variable {ctx.ID().getText()} not declared in this scope in line {ctx.start.line}")
-        elif expr.type != self.symbol_table[scope]["vars"][ctx.ID().getText()]["type"]:
-            print(
-                f"Type mismatch: {self.symbol_table[scope]['vars'][ctx.ID().getText()]['type']} and {expr.type}, {ctx.getText()}"
+            self.error(
+                f"Variable {ctx.ID().getText()} not declared in this scope in line {ctx.start.line}: {ctx.getText()}"
             )
-
+        elif expr.type != self.symbol_table[scope]["vars"][ctx.ID().getText()]["type"]:
+            self.error(
+                f"Type mismatch: {self.symbol_table[scope]['vars'][ctx.ID().getText()]['type']} and {expr.type} in line {ctx.start.line}: {ctx.getText()}"
+            )
 
     # Visit a parse tree produced by SimplifiedJavaParser#arith.
     def visitArith(self, ctx: SimplifiedJavaParser.ArithContext):
         if ctx.functionCall():
-            pass
-            # return self.visitFunctionCall(ctx.functionCall())
+            return self.visitFunctionCall(ctx.functionCall())
         elif ctx.literal():
             return self.visitLiteral(ctx.literal())
         elif ctx.ID():
-            parent = ctx.parentCtx
-            while (
-                parent.__class__ is not SimplifiedJavaParser.MainContext
-                and parent.__class__ is not SimplifiedJavaParser.FunctionContext
-            ):
-                parent = parent.parentCtx
-
-            scope = (
-                "main"
-                if parent.__class__ is SimplifiedJavaParser.MainContext
-                else parent.ID()[0].getText()
-            )
+            scope = self.get_scope(ctx)
             if self.symbol_table[scope]["const"].get(ctx.ID().getText()):
                 const = self.symbol_table[scope]["const"][ctx.ID().getText()]
                 value = const["value"]
@@ -359,9 +425,11 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
                 value = None
                 _type = arg["type"]
             else:
-                print(f"Variable {ctx.ID().getText()} not declared in this scope.")
-                return 
-            
+                self.error(
+                    f"Variable {ctx.ID().getText()} not declared in this scope in line {ctx.start.line}: {ctx.getText()}"
+                )
+                return
+
             return Node(
                 line=ctx.ID(),
                 column=ctx.ID(),
