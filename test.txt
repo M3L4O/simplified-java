@@ -1,5 +1,5 @@
 fatorial (int fat) : int
-    if (lexp):
+    if (1 > 0):
         print (fat);
         return calc;
     else:
@@ -7,21 +7,24 @@ fatorial (int fat) : int
     end
 end
 
+media (int n1, int n2) : float
+    var:
+         m : float;
+    m = (1.2 + 1.2) / 2.0;
+    return m;
+end 
+
 mostrarMedia (int v1, int v2) : void
     var:
         const a = 10;
         x : int;
         y : int;
+        z : float;
     x = 5 + 5 * 3;
-    print ("Resultado: ", media(v1, v2));
+    break;
+    print ("Resultado: ", media(v1, z));
 end
 
-media (int n1, int n2) : float
-    var:
-         m : float;
-    m = (n1 + n2) / 2;
-    return m;
-end 
 
 main:
     var:
@@ -30,8 +33,8 @@ main:
         n1, n2 : int;
         isBoolean: bool;
     
-    isBoolean = true;
-    isBoolean = false;
+    isBoolean = !true;
+    isBoolean = 1;
     print ("Programa Fatorial. Digite o valor?");
     scanf(numero);
     print(fatorial(numero));
