@@ -6,7 +6,7 @@ if "." in __name__:
 else:
     from SimplifiedJavaParser import SimplifiedJavaParser
 
-from seedwork.entity.nodes import Node, Node
+from seedwork.entity.nodes import Node
 
 
 class SimplifiedJavaVisitor(ParseTreeVisitor):
@@ -21,6 +21,7 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         }
 
     has_error: bool = False
+    errors : list[str] = []
     symbol_table: dict = {}
     default_value: dict = {
         int: 0,
@@ -52,7 +53,7 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         return scope
 
     def error(self, message: str):
-        print(message)
+        self.errors.append(message)
         self.has_error = True
 
     def solveExpression(
