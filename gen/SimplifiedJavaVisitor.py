@@ -3,8 +3,10 @@ from antlr4 import *
 
 if "." in __name__:
     from .SimplifiedJavaParser import SimplifiedJavaParser
+    from .JasminMapper import JasminMapper
 else:
     from SimplifiedJavaParser import SimplifiedJavaParser
+    from JasminMapper import JasminMapper
 
 from seedwork.entity.nodes import Node
 
@@ -20,8 +22,9 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
             SimplifiedJavaParser.EvalTargetContext: self.visitEvalTarget,
         }
 
+    jasmin_mapper = JasminMapper()
     has_error: bool = False
-    errors : list[str] = []
+    errors: list[str] = []
     symbol_table: dict = {}
     default_value: dict = {
         int: 0,
@@ -77,9 +80,13 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         if left.value is not None and right.value is not None:
             try:
                 value = eval(f"{left.value} {op} {right.value}")
+
             except NameError:
                 pass
-            return Node(line=line, column=column, code="", type=type(value), value=value)
+
+            return Node(
+                line=line, column=column, code="", type=type(value), value=value
+            )
 
     # Visit a parse tree produced by SimplifiedJavaParser#prog.
     def visitProg(self, ctx: SimplifiedJavaParser.ProgContext):
@@ -90,6 +97,11 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         self.symbol_table["main"] = {
             "type": "void",
             "args": {},
+            "const": {},
+            "vars": {},
+        }
+
+        self.jasmin_mapper.numeric_ids["main"] = {
             "const": {},
             "vars": {},
         }
@@ -115,14 +127,41 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
             self.error(
                 f"Type mismatch: {expr.type} and bool in line {ctx.start.line}: {ctx.getText()}"
             )
+            
+        true_label = self.jasmin_mapper.increase_label()
+        false_label = self.jasmin_mapper.increase_label()
+        
+        code = (
+            f""
+        )
 
     # Visit a parse tree produced by SimplifiedJavaParser#while.
     def visitWhile(self, ctx: SimplifiedJavaParser.WhileContext):
         expr = self.op_mapper[ctx.expr().__class__](ctx.expr())
+
         if expr.type != bool:
             self.error(
                 f"Type mismatch: {expr.type} and bool in line {ctx.start.line}: {ctx.getText()}"
             )
+
+        external_label = self.jasmin_mapper.increase_label()
+        internal_label = self.jasmin_mapper.increase_label()
+        next_label = self.jasmin_mapper.increase_label()
+
+        code = (
+            f"L{external_label}:\n"
+            f"if ... goto L{internal_label}\n"
+            f"goto L{next_label}\n"
+            f"L{internal_label}:"
+        )
+        print(code)
+
+        results = [self.visitCmd(cmd) for cmd in ctx.cmd()]
+
+        code = f"goto L{external_label}\n" f"L{next_label}:"
+
+        print(code)
+
     # Visit a parse tree produced by SimplifiedJavaParser#EvalTarget.
     def visitEvalTarget(self, ctx: SimplifiedJavaParser.EvalTargetContext):
         return self.visitArith(ctx.arith())
@@ -160,9 +199,32 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
                 f"Type mismatch: {left.type} and {right.type} in line {ctx.start.line}: {ctx.getText()}"
             )
 
-        return self.solveExpression(
-            ctx.start.line, ctx.start.column, left, ctx.op.text, right
-        )
+        if left.value is not None and right.value is not None:
+            ret = self.solveExpression(
+                ctx.start.line, ctx.start.column, left, ctx.op.text, right
+            )
+            
+            code = f"ldc {ret.value}\n"
+        else:
+            scope = self.get_scope(ctx)
+            code = self.jasmin_mapper.generate_arith_operation(
+                ctx.left.getText(),
+                ctx.right.getText(),
+                ctx.op.text,
+                self.type_mapper[right.type.__name__],
+                scope,
+            )
+            
+            ret = Node(
+                line=ctx.start.line,
+                column=ctx.start.column,
+                type=right.type,
+                code="",
+            )
+        
+        print(code)
+        ret.code = code
+        return ret
 
     # Visit a parse tree produced by SimplifiedJavaParser#Parens.
     def visitParens(self, ctx: SimplifiedJavaParser.ParensContext):
@@ -189,14 +251,39 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
             self.error(
                 f"Type mismatch: {left.type} and {right.type} in line {ctx.start.line}: {ctx.getText()}"
             )
-
-        return self.solveExpression(
-            ctx.start.line, ctx.start.column, left, ctx.op.text, right
-        )
+            
+        if left.value is not None and right.value is not None:
+            ret = self.solveExpression(
+                ctx.start.line, ctx.start.column, left, ctx.op.text, right
+            )
+            
+            code = f"ldc {ret.value}\n"
+        else:
+            scope = self.get_scope(ctx)
+            code = self.jasmin_mapper.generate_arith_operation(
+                ctx.left.getText(),
+                ctx.right.getText(),
+                ctx.op.text,
+                self.type_mapper[right.type.__name__],
+                scope,
+            )
+            
+            ret = Node(
+                line=ctx.start.line,
+                column=ctx.start.column,
+                type=right.type,
+                code="",
+            )
+        
+        print(code)
+        ret.code = code
+        return ret
 
     def visitLogic(self, ctx: SimplifiedJavaParser.LogicContext):
         if ctx.left.__class__ is SimplifiedJavaParser.LogicContext:
-            self.error(f"Nested logic expressions are not supported in line {ctx.start.line}: {ctx.getText()}")
+            self.error(
+                f"Nested logic expressions are not supported in line {ctx.start.line}: {ctx.getText()}"
+            )
             return Node(
                 line=ctx.start.line,
                 column=ctx.start.column,
@@ -213,12 +300,19 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
                 f"Type mismatch: {left.type} is not equal to {right.type} in line {ctx.start.line}: {ctx.getText()}"
             )
 
-        return self.solveExpression(ctx.start.line, ctx.start.column, left, ctx.op.text, right)
+        return self.solveExpression(
+            ctx.start.line, ctx.start.column, left, ctx.op.text, right
+        )
 
     def visitFunction(self, ctx: SimplifiedJavaParser.FunctionContext):
         function_type = self.type_mapper[ctx.functionType.text]
 
         function_id = ctx.ID()[0].getText()
+
+        self.jasmin_mapper.numeric_ids[function_id] = {
+            "const": {},
+            "vars": {},
+        }
 
         if function_id in self.symbol_table:
             self.error(
@@ -253,6 +347,17 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
                     "type": type,
                     "value": self.default_value[type],
                 }
+                
+                self.jasmin_mapper.numeric_ids[function_id]["vars"][id] = self.jasmin_mapper.increase_nid()
+
+        code = self.jasmin_mapper.generate_function(function_id, function_type)
+        print(code)
+        
+        res_codes = self.visitChildren(ctx)
+        # code += "".join(res_codes)
+        
+        code = ".end method"
+        print(code)
 
         return self.visitChildren(ctx)
 
@@ -274,6 +379,9 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
                 self.error(
                     f"Type mismatch: {expr.type} and {self.symbol_table[ctx.ID().getText()]['args'][arg]['type']} in line {ctx.start.line}: {ctx.getText()}"
                 )
+            
+        # code = self.jasmin_mapper.generate_function_call(ctx.ID().getText(), ['test2'], int, self.get_scope(ctx))
+        # print(code)
 
         return Node(
             line=ctx.start.line,
@@ -331,6 +439,8 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         elif type(scope) == SimplifiedJavaParser.FunctionContext:
             scope = scope.ID()[0].getText()
 
+        codes = []
+
         for id, terminal in zip(ids, terminals):
             if (
                 id
@@ -349,10 +459,18 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
                 "value": terminal.value,
             }
 
+            nid = self.jasmin_mapper.increase_nid()
+            self.numeric_ids[scope]["const"][id] = nid
+            codes.append(
+                self.jasmin_mapper.generate_assign(
+                    self.type_mapper[terminal.type.__name__], nid, terminal.value
+                )
+            )
+
         return Node(
             line=ctx.start.line,
             column=ctx.start.column,
-            code="",
+            code="".join(codes),
             type=None,
         )
 
@@ -388,6 +506,9 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
                 "value": self.default_value[_type],
             }
 
+            nid = self.jasmin_mapper.increase_nid()
+            self.jasmin_mapper.numeric_ids[scope]["vars"][id] = nid
+
     # Visit a parse tree produced by SimplifiedJavaParser#assign.
     def visitAssign(self, ctx: SimplifiedJavaParser.AssignContext):
         scope = self.get_scope(ctx)
@@ -404,6 +525,18 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
             self.error(
                 f"Type mismatch: {self.symbol_table[scope]['vars'][ctx.ID().getText()]['type']} and {expr.type} in line {ctx.start.line}: {ctx.getText()}"
             )
+
+        nid = self.jasmin_mapper.numeric_ids[scope]["vars"][ctx.ID().getText()]
+        
+        code = self.jasmin_mapper.generate_assign(self.type_mapper[expr.type.__name__], nid, expr.value)
+            
+        print(code)
+        return Node(
+            line=ctx.start.line,
+            column=ctx.start.column,
+            code=code,
+            type=None,
+        )
 
     # Visit a parse tree produced by SimplifiedJavaParser#arith.
     def visitArith(self, ctx: SimplifiedJavaParser.ArithContext):

@@ -1,0 +1,13 @@
+funcao(int arg1):int
+    arg1 = 1000;
+end
+
+main:
+var:
+    test: int;
+    test2: int;
+
+test = test2 + 2 * 3;
+funcao(test);
+
+end
