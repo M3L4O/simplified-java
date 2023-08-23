@@ -1,14 +1,26 @@
+media(int x, int y):int
+    return (x + y) / 2;
+end
+
+
 main:
     var:
         a: int;
         b: int;
         m: int;
+        f: float;
+        b: bool;
+    
+    scanf(b);
+    print(b);
+
+    //if(f < 10.0):
+    //    print("menor");
+    //end
 
     scanf(a);
     scanf(b);
-    while (a > b):
-        print("a:", a);
-        a = a - 1;
-    end
+    m = media(a, b);
+    print(m);
 
 end

@@ -12,7 +12,8 @@ from seedwork.entity.nodes import Node
 
 
 class SimplifiedJavaVisitor(ParseTreeVisitor):
-    def __init__(self):
+    def __init__(self, filename: str):
+        self.filename = filename
         self.op_mapper = {
             SimplifiedJavaParser.SumContext: self.visitSum,
             SimplifiedJavaParser.MultContext: self.visitMult,
@@ -92,7 +93,7 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
             main = self.node_mapper[ctx.main().__class__](ctx.main())
             main_code = main.code
 
-        code = f".class public {'nome'}\n.super java/lang/Object\n{function_codes}\n{main_code}"
+        code = f".class public {self.filename}\n.super java/lang/Object\n{function_codes}\n{main_code}"
 
         print(code)
 
@@ -171,7 +172,7 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
             scanf_nid = self.jasmin_mapper.increase_nid(scope)
             self.jasmin_mapper.numeric_ids[scope]["scanf"] = scanf_nid
 
-        static = "new java/util/Scanner\ngetstatic java/lang/System/in Ljava/io/InputStream;\n"
+        static = "new java/util/Scanner\ndup\ngetstatic java/lang/System/in Ljava/io/InputStream;\n"
         invoke_special = f"invokespecial java/util/Scanner/<init>(Ljava/io/InputStream;)V\nastore {scanf_nid}\n"
         invoke_virtual = "invokevirtual java/util/Scanner/{}"
         code = [static, invoke_special]
@@ -222,7 +223,6 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
     # Visit a parse tree produced by SimplifiedJavaParser#while.
     def visitWhile(self, ctx: SimplifiedJavaParser.WhileContext):
         expr = self.op_mapper[ctx.expr().__class__](ctx.expr())
-
         if expr.type != bool:
             self.error(
                 f"Type mismatch: {expr.type} and bool in line {ctx.start.line}: {ctx.getText()}"
@@ -233,11 +233,10 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         next_label = self.jasmin_mapper.increase_label()
         results = [self.node_mapper[cmd.__class__](cmd) for cmd in ctx.cmd()]
 
-        code = f"L{external_label}:\n{expr.code}ifeq L{internal_label}\ngoto L{next_label}\nL{internal_label}:\n{''.join([result.code for result in results])}\ngoto L{external_label}\nL{next_label}:\n"
+        code = f"L{external_label}:\n{expr.code}ifeq L{internal_label}\ngoto L{next_label}\nL{internal_label}:\n{''.join([result.code for result in results]).format(label=f'L{next_label}')}\ngoto L{external_label}\nL{next_label}:\n"
 
         return Node(line=ctx.start.line, column=ctx.start.column, code=code)
 
-    # Visit a parse tree produced by SimplifiedJavaParser#EvalTarget.
     def visitEvalTarget(self, ctx: SimplifiedJavaParser.EvalTargetContext):
         return self.visitArith(ctx.arith())
 
@@ -288,7 +287,7 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         return Node(
             line=ctx.start.line,
             column=ctx.start.column,
-            code="",
+            code=node.code,
             type=node.type,
             value=node.value,
         )
@@ -395,7 +394,9 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
                     id
                 ] = self.jasmin_mapper.increase_nid(scope=function_id)
 
-        initial = self.jasmin_mapper.generate_function(function_id, function_type)
+        initial = self.jasmin_mapper.generate_function(
+            function_id, function_type, self.symbol_table[function_id]["args"]
+        )
         locals = f".limit stack 100\n.limit locals {len(self.symbol_table[function_id]['vars'].keys()) + 1}\n"
         decl = self.visitDeclScope(ctx.declScope()).code if ctx.declScope() else ""
         cmds = [self.node_mapper[cmd.__class__](cmd).code for cmd in ctx.cmd()]
@@ -415,18 +416,23 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
             self.error(
                 f"Expected {len(ctx.expr())} arguments, got {len(args)} in line {ctx.start.line}: {ctx.getText()}"
             )
-
+        expr_codes = []
         for arg, expr in zip(args, ctx.expr()):
             expr = self.op_mapper[expr.__class__](expr)
             if expr.type != self.symbol_table[ctx.ID().getText()]["args"][arg]["type"]:
                 self.error(
                     f"Type mismatch: {expr.type} and {self.symbol_table[ctx.ID().getText()]['args'][arg]['type']} in line {ctx.start.line}: {ctx.getText()}"
                 )
+            else:
+                expr_codes.append(expr.code)
+
+        expr_code = "".join(expr_codes)
+        code = f"{expr_code}\ninvokestatic {self.filename}/{ctx.ID().getText()}({self.jasmin_mapper.generate_args(self.symbol_table[ctx.ID().getText()]['args'])}){self.jasmin_mapper.types_flags[self.symbol_table[ctx.ID().getText()]['type']]}\n"
 
         return Node(
             line=ctx.start.line,
             column=ctx.start.column,
-            code="",
+            code=code,
             type=self.symbol_table[ctx.ID().getText()]["type"],
         )
 
@@ -441,6 +447,10 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
                     self.error(
                         f"Type mismatch: {expr.type} and {type_function} in line {ctx.start.line}: {ctx.getText()}"
                     )
+                else:
+                    code = (
+                        f"{expr.code}\n{self.jasmin_mapper.return_types[expr.type]}\n"
+                    )
 
         else:
             if type_function != None:
@@ -450,7 +460,7 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
             else:
                 code = f"return\n"
 
-        return Node(line=ctx.start.line, column=ctx.start.column, code="")
+        return Node(line=ctx.start.line, column=ctx.start.column, code=code)
 
     # Visit a parse tree produced by SimplifiedJavaParser#break.
     def visitBreak(self, ctx: SimplifiedJavaParser.BreakContext):
@@ -465,7 +475,10 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
             self.error(
                 f"Break statement outside of loop in line {ctx.start.line}: {ctx.getText()}"
             )
-        return Node(line=ctx.start.line, column=ctx.start.column, code="")
+
+        code = "goto {label}\n"
+
+        return Node(line=ctx.start.line, column=ctx.start.column, code=code)
 
     # Visit a parse tree produced by SimplifiedJavaParser#declScope.
     def visitDeclScope(self, ctx: SimplifiedJavaParser.DeclScopeContext):
@@ -644,7 +657,7 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         if ctx.String():
             _type = str
             value = ctx.getText()
-            code = value
+            code = f"ldc {value}\n"
         elif ctx.Boolean():
             _type = bool
             value = ctx.getText() == "true"
@@ -659,8 +672,6 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
             code = f"ldc {value}\n"
         else:
             raise Exception("Invalid type")
-
-        code = f"ldc {value}\n"
 
         return Node(
             line=ctx.start.line,

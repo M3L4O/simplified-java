@@ -158,12 +158,8 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         #     if_cmds = "".join([self.node_mapper[cmd.__class__](cmd).code for cmd in ctx.ifCmd])
         # if ctx.elseCmd:
         #     else_cmds = "".join([self.node_mapper[cmd.__class__](cmd).code for cmd in ctx.elseCmd])
-        
-        
-        
+
         code = f"{expr.code}ifeq L{true_label}\n{else_cmds}goto L{next_label}\nL{true_label}:\n{if_cmds}\nL{next_label}:\n"
-
-
 
         return Node(line=ctx.start.line, column=ctx.start.column, code=code)
 
