@@ -21,8 +21,8 @@ mostrarMedia (int v1, int v2) : void
         y : int;
         z : float;
     x = 5 + 5 * 3;
-    break;
-    print ("Resultado: ", media(v1, z));
+
+    print ("Resultado: ", media(v1, v2));
 end
 
 
@@ -34,7 +34,6 @@ main:
         isBoolean: bool;
     
     isBoolean = !true;
-    isBoolean = 1;
     print ("Programa Fatorial. Digite o valor?");
     scanf(numero);
     print(fatorial(numero));

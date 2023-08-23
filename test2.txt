@@ -1,13 +1,14 @@
-funcao(int arg1):int
-    arg1 = 1000;
-end
-
 main:
-var:
-    test: int;
-    test2: int;
+    var:
+        a: int;
+        b: int;
+        m: int;
 
-test = test2 + 2 * 3;
-funcao(test);
+    scanf(a);
+    scanf(b);
+    while (a > b):
+        print("a:", a);
+        a = a - 1;
+    end
 
 end

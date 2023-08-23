@@ -3,7 +3,7 @@ grammar SimplifiedJava;
 prog: function* main EOF;
 
 main: 'main' ':' declScope? cmd* 'end';
-
+cmds: cmd*;
 cmd:
 	(assign | functionCall | break | return) ';'
 	| conditional
@@ -15,7 +15,7 @@ print: 'print' '(' expr (',' expr)* ')' ';';
 scanf: 'scanf' '(' ID (',' ID)* ')' ';';
 
 conditional:
-	'if' '(' expr ')' ':' cmd* ('else' ':' cmd*)? 'end';
+	'if' '(' expr ')' ':' ifCmds=cmds ('else' ':' elseCmds=cmds)? 'end';
 while: 'while' '(' expr ')' ':' cmd* 'end';
 
 expr:
