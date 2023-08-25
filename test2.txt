@@ -1,26 +1,53 @@
-media(int x, int y):int
-    return (x + y) / 2;
+fatorial (int fat) : int
+    if (fat > 0):
+        print (fat, "\n");
+        return fat * fatorial(fat-1);
+    else:
+        return 1;
+    end
+end
+
+media (int n1, int n2) : int
+    var:
+         m : int;
+    m = (n1 + n2) / 2;
+    return m;
+end 
+
+mostrarMedia (int v1, int v2) : void
+    var:
+        const a = 10;
+        x : int;
+        y : int;
+        z : float;
+    x = 5 + 5 * 3;
+
+    print ("Resultado: ", media(v1, v2));
 end
 
 
 main:
     var:
-        a: int;
-        b: int;
-        m: int;
-        f: float;
-        b: bool;
+        const cout = 10.0;
+        numero : int;
+        n1, n2 : int;
+        isBoolean: bool;
     
-    scanf(b);
-    print(b);
+    isBoolean = !!true;
+    print(3 * 10 + 5, "\n");
 
-    //if(f < 10.0):
-    //    print("menor");
-    //end
+    while(isBoolean):
+        print ("Programa Fatorial. Digite o valor?");
+        scanf(numero);
 
-    scanf(a);
-    scanf(b);
-    m = media(a, b);
-    print(m);
-
+        if(numero < 0):
+            break;
+        else:
+            print(fatorial(numero), "\n");
+        end
+    end
+    //print ("Programa Media. Digite o valores?");
+    //scanf(n1, n2);
+    //print(media(n1, n2), "\n");
+    //mostrarMedia(n1, n2);
 end

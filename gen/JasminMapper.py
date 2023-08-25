@@ -20,18 +20,15 @@ class JasminMapper:
         str: "Ljava/lang/String;",
     }
 
-    store_types = {int: "istore", float: "fstore", str: "astore"}
+    store_types = {int: "istore", float: "fstore", str: "astore", bool: "istore"}
 
-    load_types = {
-        int: "iload",
-        float: "fload",
-        str: "aload",
-    }
+    load_types = {int: "iload", float: "fload", str: "aload", bool: "iload"}
 
     return_types = {
         int: "ireturn",
         float: "freturn",
         str: "areturn",
+        bool: "ireturn",
         None: "return",
     }
 
@@ -130,12 +127,12 @@ class JasminMapper:
         code += f"{self.arith_op_mapping[op][type]}"
 
         return code
-    
+
     def generate_args(self, function_args):
         args_codes = "".join(
             [self.types_flags[t["type"]] for t in function_args.values()]
         )
-        
+
         return args_codes
 
     def generate_function(self, id, type, function_args):

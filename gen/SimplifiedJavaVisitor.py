@@ -49,7 +49,7 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
     default_value: dict = {
         int: 0,
         float: 0.0,
-        bool: False,
+        bool: 1,
         str: "",
     }
     type_mapper: dict = {
@@ -75,9 +75,11 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         )
         return scope
 
-    def error(self, message: str):
+    def error(self, message: str, stop_running = False):
         self.errors.append(message)
         self.has_error = True
+        if stop_running:
+            raise(Exception("\n".join(self.errors)))
 
     # Visit a parse tree produced by SimplifiedJavaParser#prog.
     def visitProg(self, ctx: SimplifiedJavaParser.ProgContext):
@@ -95,7 +97,11 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
 
         code = f".class public {self.filename}\n.super java/lang/Object\n{function_codes}\n{main_code}"
 
-        print(code)
+        if self.has_error:
+            self.error("", True)
+        else:
+            with open(f"{self.filename}.j", "w") as file:
+                file.write(code)
 
     # Visit a parse tree produced by SimplifiedJavaParser#main.
     def visitMain(self, ctx: SimplifiedJavaParser.MainContext):
@@ -216,7 +222,7 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         if ctx.elseCmds:
             else_cmds = "".join([cmd.code for cmd in self.visitCmds(ctx.elseCmds)])
 
-        code = f"{expr.code}ifeq L{true_label}\n{else_cmds}goto L{next_label}\nL{true_label}:\n{if_cmds}\nL{next_label}:\n"
+        code = f"{expr.code}ifne L{true_label}\n{else_cmds}goto L{next_label}\nL{true_label}:\n{if_cmds}\nL{next_label}:\n"
 
         return Node(line=ctx.start.line, column=ctx.start.column, code=code)
 
@@ -233,7 +239,7 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         next_label = self.jasmin_mapper.increase_label()
         results = [self.node_mapper[cmd.__class__](cmd) for cmd in ctx.cmd()]
 
-        code = f"L{external_label}:\n{expr.code}ifeq L{internal_label}\ngoto L{next_label}\nL{internal_label}:\n{''.join([result.code for result in results]).format(label=f'L{next_label}')}\ngoto L{external_label}\nL{next_label}:\n"
+        code = f"L{external_label}:\n{expr.code}ifne L{internal_label}\ngoto L{next_label}\nL{internal_label}:\n{''.join([result.code for result in results]).format(label=f'L{next_label}')}\ngoto L{external_label}\nL{next_label}:\n"
 
         return Node(line=ctx.start.line, column=ctx.start.column, code=code)
 
@@ -339,9 +345,9 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         next_label = self.jasmin_mapper.increase_label()
 
         code = f"{left.code}{right.code}{self.jasmin_mapper.arith_op_mapping[ctx.op.text][left.type]} L{true_label}\n"
-        code += f"ldc 1\ngoto L{next_label}\nL{true_label}:\nldc 0\nL{next_label}:\n"
+        code += f"ldc 0\ngoto L{next_label}\nL{true_label}:\nldc 1\nL{next_label}:\n"
 
-        return Node(line=ctx.start.line, column=ctx.start.column, code=code)
+        return Node(line=ctx.start.line, column=ctx.start.column, type=bool, code=code)
 
     def visitFunction(self, ctx: SimplifiedJavaParser.FunctionContext):
         function_type = self.type_mapper[ctx.functionType.text]
@@ -397,12 +403,23 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         initial = self.jasmin_mapper.generate_function(
             function_id, function_type, self.symbol_table[function_id]["args"]
         )
-        locals = f".limit stack 100\n.limit locals {len(self.symbol_table[function_id]['vars'].keys()) + 1}\n"
         decl = self.visitDeclScope(ctx.declScope()).code if ctx.declScope() else ""
-        cmds = [self.node_mapper[cmd.__class__](cmd).code for cmd in ctx.cmd()]
+        cmds = "".join([self.node_mapper[cmd.__class__](cmd).code for cmd in ctx.cmd()])
+        
+        if "return" not in cmds:
+            if function_type is None:
+                cmds += "return \n"
+            else:
+                self.error(f"Expected return in function {function_id} in line in line {ctx.start.line}: {ctx.getText()}")
+            
+        
+        if not cmds.endswith("return\n"):
+            cmds += f"{self.jasmin_mapper.return_types[function_type]}\n"
+        
         final = f".end method\n"
-
-        code = f"{initial}{locals}{decl}{''.join([cmd for cmd in cmds])}{final}"
+        locals = f".limit stack 100\n.limit locals {len(self.symbol_table[function_id]['vars'].keys()) + 1}\n"
+        
+        code = f"{initial}{locals}{decl}{cmds}{final}"
         return Node(line=ctx.start.line, column=ctx.start.column, code=code)
 
     def visitFunctionCall(self, ctx: SimplifiedJavaParser.FunctionCallContext):
@@ -447,18 +464,16 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
                     self.error(
                         f"Type mismatch: {expr.type} and {type_function} in line {ctx.start.line}: {ctx.getText()}"
                     )
-                else:
-                    code = (
-                        f"{expr.code}\n{self.jasmin_mapper.return_types[expr.type]}\n"
-                    )
+
+            code = f"{expr.code}\n{self.jasmin_mapper.return_types[expr.type]}\n"
 
         else:
             if type_function != None:
                 self.error(
                     f"Type mismatch: None and {type_function} in line {ctx.start.line}: {ctx.getText()}"
                 )
-            else:
-                code = f"return\n"
+
+            code = f"return\n"
 
         return Node(line=ctx.start.line, column=ctx.start.column, code=code)
 
@@ -490,7 +505,7 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
                 for constDeclaration in ctx.constDeclaration()
             ]
 
-        elif ctx.variableDeclaration():
+        if ctx.variableDeclaration():
             variables = [
                 self.node_mapper[variableDeclaration.__class__](variableDeclaration)
                 for variableDeclaration in ctx.variableDeclaration()
@@ -627,22 +642,23 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
                 const = self.symbol_table[scope]["const"][ctx.ID().getText()]
                 value = const["value"]
                 _type = const["type"]
+                code = f"ldc {value}\n"
             elif self.symbol_table[scope]["vars"].get(ctx.ID().getText()):
                 var = self.symbol_table[scope]["vars"][ctx.ID().getText()]
                 value = None
                 _type = var["type"]
+                nid = self.jasmin_mapper.find_nid_in_scope(ctx.ID().getText(), scope)
+                load_type = self.jasmin_mapper.load_types[_type]
+                code = f"{load_type} {nid}\n"
             elif self.symbol_table[scope]["args"].get(ctx.ID().getText()):
                 arg = self.symbol_table[scope]["args"][ctx.ID().getText()]
                 value = None
                 _type = arg["type"]
             else:
                 self.error(
-                    f"Variable {ctx.ID().getText()} not declared in this scope in line {ctx.start.line}: {ctx.getText()}"
+                    f"Variable {ctx.ID().getText()} not declared in this scope in line {ctx.start.line}: {ctx.getText()}", True
                 )
                 return
-            nid = self.jasmin_mapper.find_nid_in_scope(ctx.ID().getText(), scope)
-            load_type = self.jasmin_mapper.load_types[_type]
-            code = f"{load_type} {nid}\n"
 
             return Node(
                 line=None,
@@ -661,7 +677,7 @@ class SimplifiedJavaVisitor(ParseTreeVisitor):
         elif ctx.Boolean():
             _type = bool
             value = ctx.getText() == "true"
-            code = f"ldc {0 if value else 1}\n"
+            code = f"ldc {1 if value else 0}\n"
         elif ctx.Float():
             _type = float
             value = float(ctx.getText())
